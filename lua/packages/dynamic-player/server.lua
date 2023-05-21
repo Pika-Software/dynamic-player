@@ -1,12 +1,12 @@
-import( gpm.PackageExists( "packages/glua-extensions" ) and "packages/glua-extensions" or "https://github.com/Pika-Software/glua-extensions" )
-require( "https://raw.githubusercontent.com/PrikolMen/gmod_random_bots/master/lua/autorun/server/random-bots.lua" )
+require( "packages/glua-extensions", "https://github.com/Pika-Software/glua-extensions" )
 
+-- Libraries
 local promise = promise
 local math = math
 local util = util
 
+-- Variables
 local packageName = gpm.Package:GetIdentifier()
-local timer_Simple = timer.Simple
 local table_insert = table.insert
 local WorldToLocal = WorldToLocal
 local string_lower = string.lower
@@ -17,8 +17,8 @@ local Vector = Vector
 local select = select
 
 do
-    local CurTime = CurTime
 
+    local CurTime = CurTime
     local ENT = {}
 
     ENT.Type = "anim"
@@ -127,15 +127,6 @@ local function fastCalcByModel( model )
     return mins, maxs
 end
 
-local function calcStepSize( mins, maxs )
-    return math.min( math.floor( ( maxs[3] - mins[3] ) / 3.6 ), 4095 )
-end
-
-local function fixPlayerPosition( ply, mins, maxs )
-    if mins[3] >= 0 or ply:InVehicle() then return end
-    ply:SetPos( ply:GetPos() + Vector( 0, 0, math.abs( mins[3] ) ) )
-end
-
 local function getEyePosition( ent )
     local bone = ent:FindBone( ".+Head.+" )
     if bone then
@@ -153,31 +144,29 @@ end
 
 local modelCache = {}
 
-local setupPlayer = promise.Async( function( ply, model )
-    if ply:GetModel() ~= string_lower( model ) then return end
+local PLAYER = FindMetaTable( "Player" )
+PLAYER.SetupModelBounds = promise.Async( function( self, model )
+    if self:GetModel() ~= string_lower( model ) then return end
 
     local mins, maxs, duckHeight, eyeHeightDuck, eyeHeight
-
-    -- Loading from cache
     local cache = modelCache[ model ]
     if cache then
         mins, maxs, duckHeight, eyeHeightDuck, eyeHeight = cache[1][1], cache[1][2], cache[2], cache[3][1], cache[3][2]
     end
 
-    if ply:GetBoneCount() > 1 then
+    if self:GetBoneCount() > 1 then
         if not cache then
-            -- Hull Dummy
             local dummy = ents_Create( "dynamic-player-dummy" )
             dummy:SetModel( Model( model ) )
             dummy:Spawn()
 
-            promise.Delay( 0.25 ):Await()
+            promise.Sleep( 0.25 )
             if not IsValid( dummy ) then return end
 
-            -- Hull Calc
+            -- Hull calc
             mins, maxs = calcByEntity( dummy )
 
-            -- Eyes Height Calc
+            -- Eyes height calc
             eyeHeight = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[3] )
 
             -- Dummy remove
@@ -186,7 +175,7 @@ local setupPlayer = promise.Async( function( ply, model )
             -- Ducking dummy
             dummy:SetCrouching( true )
 
-            -- Duck Height Calc
+            -- Duck height calc
             duckHeight = select( -1, calcByEntity( dummy ) )[3]
 
             -- Shitty models fix
@@ -194,7 +183,7 @@ local setupPlayer = promise.Async( function( ply, model )
                 duckHeight = maxs[3] / 2
             end
 
-            -- Duck Eyes Height Calc
+            -- Duck eyes height calc
             eyeHeightDuck = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[3] )
 
             -- Dummy remove
@@ -212,16 +201,16 @@ local setupPlayer = promise.Async( function( ply, model )
             modelCache[ model ] = { { mins, maxs }, duckHeight, { eyeHeightDuck, eyeHeight } }
         end
 
-        -- Selecting Eyes Level
-        ply:SetViewOffset( Vector( 0, 0, eyeHeight ) )
-        ply:SetViewOffsetDucked( Vector( 0, 0, math.min( eyeHeight * 0.6, eyeHeightDuck ) ) )
+        -- Selecting eyes level
+        self:SetViewOffset( Vector( 0, 0, eyeHeight ) )
+        self:SetViewOffsetDucked( Vector( 0, 0, math.min( eyeHeight * 0.6, eyeHeightDuck ) ) )
     else
         if not cache then
-            -- Hulls Calc
+            -- Hulls calc
             mins, maxs = fastCalcByModel( model )
             duckHeight = maxs[3] * 0.7
 
-            -- Eyes Calc
+            -- Eyes calc
             eyeHeight = math.Round( ( maxs[3] - mins[3] ) * 0.9 )
             eyeHeightDuck = math.Round( eyeHeight * 0.7 )
 
@@ -229,23 +218,26 @@ local setupPlayer = promise.Async( function( ply, model )
             modelCache[ model ] = { { mins, maxs }, duckHeight, { eyeHeight, eyeHeightDuck } }
         end
 
-        -- Selecting Eyes Level
-        ply:SetViewOffsetDucked( Vector( 0, 0, eyeHeightDuck ) )
-        ply:SetViewOffset( Vector( 0, 0, eyeHeight ) )
+        -- Selecting eyes level
+        self:SetViewOffsetDucked( Vector( 0, 0, eyeHeightDuck ) )
+        self:SetViewOffset( Vector( 0, 0, eyeHeight ) )
     end
 
-    -- Setuping Hulls
-    ply:SetHullDuck( mins, Vector( maxs[1], maxs[2], duckHeight ) )
-    ply:SetHull( mins, maxs )
+    -- Setuping hulls
+    self:SetHullDuck( mins, Vector( maxs[1], maxs[2], duckHeight ) )
+    self:SetHull( mins, maxs )
 
-    -- Setuping Step Size & Pos Fix
-    ply:SetStepSize( calcStepSize( mins, maxs ) )
-    fixPlayerPosition( ply, mins, maxs )
+    -- Setuping step size
+    self:SetStepSize( math.min( math.floor( ( maxs[3] - mins[3] ) / 3.6 ), 4095 ) )
+
+    -- Position fix
+    if mins[3] >= 0 or self:InVehicle() then return end
+    self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( mins[3] ) ) )
 end )
 
 hook.Add( "PlayerModelChanged", packageName, function( ply, model )
-    timer_Simple( 0, function()
+    util.NextTick( function()
         if not IsValid( ply ) then return end
-        setupPlayer( ply, model )
+        ply:SetupModelBounds( model )
     end )
 end )
