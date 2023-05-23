@@ -231,6 +231,9 @@ PLAYER.SetupModelBounds = promise.Async( function( self, model )
     -- Setuping step size
     self:SetStepSize( math.min( math.floor( ( maxs[3] - mins[3] ) / 3.6 ), 4095 ) )
 
+    -- Dev hook
+    hook.Run( "UpdatedPlayerDynamic", self )
+
     -- Position fix
     if mins[3] >= 0 or self:InVehicle() then return end
     self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( mins[3] ) ) )
