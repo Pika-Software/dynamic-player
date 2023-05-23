@@ -78,7 +78,7 @@ local function calcByEntity( ent )
         end
     end
 
-    maxs[1] = math.floor( ( ( maxs[1] - mins[1] ) + ( maxs[2] - mins[2] ) ) / 6 )
+    maxs[1] = math.floor( ( ( maxs[1] - mins[1] ) + ( maxs[2] - mins[2] ) ) / 4 )
     maxs[3] = math.floor( maxs[3] )
     maxs[2] = maxs[1]
 
@@ -142,9 +142,9 @@ local function getEyePosition( ent )
     return ent:EyePos()
 end
 
+local PLAYER = FindMetaTable( "Player" )
 local modelCache = {}
 
-local PLAYER = FindMetaTable( "Player" )
 PLAYER.SetupModelBounds = promise.Async( function( self, model )
     if self:GetModel() ~= string_lower( model ) then return end
 
@@ -169,11 +169,11 @@ PLAYER.SetupModelBounds = promise.Async( function( self, model )
             -- Eyes height calc
             eyeHeight = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[3] )
 
-            -- Dummy remove
-            dummy:Remove()
-
             -- Ducking dummy
             dummy:SetCrouching( true )
+
+            promise.Sleep( 0.25 )
+            if not IsValid( dummy ) then return end
 
             -- Duck height calc
             duckHeight = select( -1, calcByEntity( dummy ) )[3]
@@ -194,8 +194,8 @@ PLAYER.SetupModelBounds = promise.Async( function( self, model )
             eyeHeightDuck = math.floor( math.max( 5, eyeHeightDuck, ( maxs[3] - mins[3] ) * 0.6 ) )
 
             -- Height correction
-            duckHeight = math.floor( math.max( duckHeight, eyeHeightDuck + 5 ) )
-            maxs[3] = math.floor( math.max( maxs[3] + 5, eyeHeight + 5 ) )
+            duckHeight = math.floor( math.max( 5, math.min( duckHeight, eyeHeightDuck + 5 ) ) )
+            maxs[3] = math.floor( math.max( maxs[3], eyeHeight + 5 ) )
 
             -- Saving results in cache
             modelCache[ model ] = { { mins, maxs }, duckHeight, { eyeHeightDuck, eyeHeight } }
