@@ -146,8 +146,8 @@ end
 local PLAYER = FindMetaTable( "Player" )
 local modelCache = {}
 
-PLAYER.SetupModelBounds = promise.Async( function( self, model )
-    if self:GetModel() ~= string_lower( model ) then return end
+PLAYER.SetupModelBounds = promise.Async( function( self )
+    local model = string_lower( self:GetModel() )
 
     local mins, maxs, duckHeight, eyeHeightDuck, eyeHeight
     local cache = modelCache[ model ]
@@ -239,9 +239,10 @@ PLAYER.SetupModelBounds = promise.Async( function( self, model )
     self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( mins[3] ) ) )
 end )
 
-hook.Add( "PlayerModelChanged", packageName, function( ply, model )
+hook.Add( "OnPlayerModelChange", packageName, function( ply )
     util.NextTick( function()
-        if not IsValid( ply ) then return end
-        ply:SetupModelBounds( model )
+        if IsValid( ply ) then
+            ply:SetupModelBounds()
+        end
     end )
 end )
