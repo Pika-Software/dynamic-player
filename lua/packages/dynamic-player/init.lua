@@ -1,5 +1,5 @@
-require( "packages/player-extensions", "https://github.com/Pika-Software/player-extensions" )
-require( "packages/glua-extensions", "https://github.com/Pika-Software/glua-extensions" )
+install( "packages/player-extensions", "https://github.com/Pika-Software/player-extensions" )
+install( "packages/glua-extensions", "https://github.com/Pika-Software/glua-extensions" )
 
 -- Libraries
 local promise = promise
