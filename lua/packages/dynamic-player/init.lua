@@ -148,6 +148,7 @@ local modelCache = {}
 
 PLAYER.SetupModelBounds = promise.Async( function( self )
     local model = string_lower( self:GetModel() )
+    if hook.Run( "OnPlayerUpdateModelBounds", self, model ) then return end
 
     local mins, maxs, duckHeight, eyeHeightDuck, eyeHeight
     local cache = modelCache[ model ]
@@ -231,8 +232,7 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
     -- Setuping step size
     self:SetStepSize( math.min( math.floor( ( maxs[3] - mins[3] ) / 3.6 ), 4095 ) )
 
-    -- Dev hook
-    hook.Run( "UpdatedPlayerDynamic", self )
+    hook.Run( "PlayerUpdatedModelBounds", self, model )
 
     -- Position fix
     if mins[3] >= 0 or self:InVehicle() then return end
