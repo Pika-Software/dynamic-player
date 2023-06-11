@@ -7,7 +7,6 @@ local math = math
 local util = util
 
 -- Variables
-local packageName = gpm.Package:GetIdentifier()
 local table_insert = table.insert
 local WorldToLocal = WorldToLocal
 local string_lower = string.lower
@@ -239,7 +238,7 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
     self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( mins[3] ) ) )
 end )
 
-hook.Add( "OnPlayerModelChange", packageName, function( ply )
+hook.Add( "OnPlayerModelChange", "ModelChanged", function( ply )
     util.NextTick( function()
         if IsValid( ply ) then
             ply:SetupModelBounds()
