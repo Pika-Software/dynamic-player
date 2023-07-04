@@ -48,44 +48,41 @@ do
 
 end
 
-local function calcByEntity( ent )
-    local playerPos, playerAng = ent:GetPos(), ent:GetAngles()
+local function calcByEntity( entity )
+    local playerPos, playerAng = entity:GetPos(), entity:GetAngles()
     local mins, maxs = Vector(), Vector()
 
-    for hboxset = 0, ent:GetHitboxSetCount() - 1 do
-        for hitbox = 0, ent:GetHitBoxCount( hboxset ) - 1 do
-            local bone = ent:GetHitBoxBone( hitbox, hboxset )
+    for hboxset = 0, entity:GetHitboxSetCount() - 1 do
+        for hitbox = 0, entity:GetHitBoxCount( hboxset ) - 1 do
+            local bone = entity:GetHitBoxBone( hitbox, hboxset )
             if bone < 0 then continue end
 
-            local bonePos, boneAng = ent:GetLocalBonePosition( bone )
-            local boneMins, boneMaxs = ent:GetHitBoxBounds( hitbox, hboxset )
+            local boneMins, boneMaxs = entity:GetHitBoxBounds( hitbox, hboxset )
+            local bonePos, boneAng = entity:GetLocalBonePosition( bone )
+
             local localBonePos = WorldToLocal( bonePos, boneAng, playerPos, playerAng )
+            boneMins, boneMaxs = boneMins + localBonePos, boneMaxs + localBonePos
 
-            boneMins = boneMins + localBonePos
-            boneMaxs = boneMaxs + localBonePos
-
-            for i = 1, 3 do
-                if boneMins[i] < mins[i] then
-                    mins[i] = boneMins[i]
+            for axis = 1, 3 do
+                if boneMins[ axis ] < mins[ axis ] then
+                    mins[ axis ] = boneMins[ axis ]
                 end
-            end
 
-            for i = 1, 3 do
-                if boneMaxs[i] > maxs[i] then
-                    maxs[i] = boneMaxs[i]
+                if boneMaxs[ axis ] > maxs[ axis ] then
+                    maxs[ axis ] = boneMaxs[ axis ]
                 end
             end
         end
     end
 
-    maxs[1] = math.floor( ( ( maxs[1] - mins[1] ) + ( maxs[2] - mins[2] ) ) / 4 )
-    maxs[3] = math.floor( maxs[3] )
-    maxs[2] = maxs[1]
+    maxs[ 1 ] = math.floor( ( ( maxs[ 1 ] - mins[ 1 ] ) + ( maxs[ 2 ] - mins[ 2 ] ) ) / 4 )
+    maxs[ 3 ] = math.floor( maxs[ 3 ] )
+    maxs[ 2 ] = maxs[ 1 ]
 
-    local floorMins = math.floor( mins[3] )
-    mins[3] = math.abs( floorMins ) >= maxs[3] and floorMins or 0
-    mins[1] = -maxs[1]
-    mins[2] = mins[1]
+    local floorMins = math.floor( mins[ 3 ] )
+    mins[ 3 ] = math.abs( floorMins ) >= maxs[ 3 ] and floorMins or 0
+    mins[ 1 ] = -maxs[ 1 ]
+    mins[ 2 ] = mins[ 1 ]
 
     return mins, maxs
 end
@@ -102,16 +99,15 @@ local function fastCalcByModel( model )
 
     for num, point in ipairs( verticies ) do
         local pos = point.pos
-        for i = 1, 3 do
-            if pos[i] < mins[i] then
-                mins[i] = pos[i]
-            end
+
+        for axis = 1, 3 do
+            if pos[ axis ] >= mins[ axis ] then continue end
+            mins[ axis ] = pos[ axis ]
         end
 
-        for i = 1, 3 do
-            if pos[i] > maxs[i] then
-                maxs[i] = pos[i]
-            end
+        for axis = 1, 3 do
+            if pos[ axis ] <= maxs[ axis ] then continue end
+            maxs[ axis ] = pos[ axis ]
         end
     end
 
@@ -127,19 +123,19 @@ local function fastCalcByModel( model )
     return mins, maxs
 end
 
-local function getEyePosition( ent )
-    local bone = ent:FindBone( ".+Head.+" )
+local function getEyePosition( entity )
+    local bone = entity:FindBone( ".+Head.+" )
     if bone then
-        local mins, maxs = ent:GetHitBoxBoundsByBone( bone )
+        local mins, maxs = entity:GetHitBoxBoundsByBone( bone )
         if mins and maxs then
-            return ent:GetLocalBonePosition( bone ) + ( maxs - mins ) / 2
+            return entity:GetLocalBonePosition( bone ) + ( maxs - mins ) / 2
         end
     end
 
-    local eyes = ent:GetAttachmentByName( "eyes" )
+    local eyes = entity:GetAttachmentByName( "eyes" )
     if eyes then return eyes.Pos end
 
-    return ent:EyePos()
+    return entity:EyePos()
 end
 
 local PLAYER = FindMetaTable( "Player" )
@@ -152,7 +148,7 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
     local mins, maxs, duckHeight, eyeHeightDuck, eyeHeight
     local cache = modelCache[ model ]
     if cache then
-        mins, maxs, duckHeight, eyeHeightDuck, eyeHeight = cache[1][1], cache[1][2], cache[2], cache[3][1], cache[3][2]
+        mins, maxs, duckHeight, eyeHeightDuck, eyeHeight = cache[ 1 ][ 1 ], cache[ 1 ][ 2 ], cache[ 2 ], cache[ 3 ][ 1 ], cache[ 3 ][ 2 ]
     end
 
     if self:GetBoneCount() > 1 then
@@ -168,7 +164,7 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
             mins, maxs = calcByEntity( dummy )
 
             -- Eyes height calc
-            eyeHeight = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[3] )
+            eyeHeight = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[ 3 ] )
 
             -- Ducking dummy
             dummy:SetCrouching( true )
@@ -177,26 +173,26 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
             if not IsValid( dummy ) then return end
 
             -- Duck height calc
-            duckHeight = select( -1, calcByEntity( dummy ) )[3]
+            duckHeight = select( -1, calcByEntity( dummy ) )[ 3 ]
 
             -- Shitty models fix
             if duckHeight < 5 then
-                duckHeight = maxs[3] / 2
+                duckHeight = maxs[ 3 ] / 2
             end
 
             -- Duck eyes height calc
-            eyeHeightDuck = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[3] )
+            eyeHeightDuck = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[ 3 ] )
 
             -- Dummy remove
             dummy:Remove()
 
             -- Eye position correction
             eyeHeight = math.floor( math.max( eyeHeight - 5, 5 ) )
-            eyeHeightDuck = math.floor( math.max( 5, eyeHeightDuck, ( maxs[3] - mins[3] ) * 0.6 ) )
+            eyeHeightDuck = math.floor( math.max( 5, eyeHeightDuck, ( maxs[ 3 ] - mins[ 3 ] ) * 0.6 ) )
 
             -- Height correction
             duckHeight = math.floor( math.max( 5, duckHeight, eyeHeightDuck + 5 ) )
-            maxs[3] = math.floor( math.max( maxs[3], eyeHeight + 5 ) )
+            maxs[3] = math.floor( math.max( maxs[ 3 ], eyeHeight + 5 ) )
 
             -- Saving results in cache
             modelCache[ model ] = { { mins, maxs }, duckHeight, { eyeHeightDuck, eyeHeight } }
@@ -209,10 +205,10 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
         if not cache then
             -- Hulls calc
             mins, maxs = fastCalcByModel( model )
-            duckHeight = maxs[3] * 0.7
+            duckHeight = maxs[ 3 ] * 0.7
 
             -- Eyes calc
-            eyeHeight = math.Round( ( maxs[3] - mins[3] ) * 0.9 )
+            eyeHeight = math.Round( ( maxs[ 3 ] - mins[ 3 ] ) * 0.9 )
             eyeHeightDuck = math.Round( eyeHeight * 0.7 )
 
             -- Saving results in cache
@@ -225,17 +221,17 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
     end
 
     -- Setuping hulls
-    self:SetHullDuck( mins, Vector( maxs[1], maxs[2], duckHeight ) )
+    self:SetHullDuck( mins, Vector( maxs[ 1 ], maxs[ 2 ], duckHeight ) )
     self:SetHull( mins, maxs )
 
     -- Setuping step size
-    self:SetStepSize( math.min( math.floor( ( maxs[3] - mins[3] ) / 3.6 ), 4095 ) )
+    self:SetStepSize( math.min( math.floor( ( maxs[ 3 ] - mins[ 3 ] ) / 3.6 ), 4095 ) )
 
     hook.Run( "PlayerUpdatedModelBounds", self, model )
 
     -- Position fix
-    if mins[3] >= 0 or self:InVehicle() then return end
-    self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( mins[3] ) ) )
+    if mins[ 3 ] >= 0 or self:InVehicle() then return end
+    self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( mins[ 3 ] ) ) )
 end )
 
 hook.Add( "OnPlayerModelChange", "ModelChanged", function( ply )
