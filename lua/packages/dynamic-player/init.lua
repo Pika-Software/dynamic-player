@@ -11,6 +11,7 @@ local table_insert = table.insert
 local WorldToLocal = WorldToLocal
 local string_lower = string.lower
 local ents_Create = ents.Create
+local vector_zero = vector_zero
 local IsValid = IsValid
 local ipairs = ipairs
 local Vector = Vector
@@ -51,6 +52,7 @@ end
 local function calcByEntity( entity )
     local playerPos, playerAng = entity:GetPos(), entity:GetAngles()
     local mins, maxs = Vector(), Vector()
+    local pelvisFix = false
 
     for hboxset = 0, entity:GetHitboxSetCount() - 1 do
         for hitbox = 0, entity:GetHitBoxCount( hboxset ) - 1 do
@@ -63,6 +65,10 @@ local function calcByEntity( entity )
             local localBonePos = WorldToLocal( bonePos, boneAng, playerPos, playerAng )
             boneMins, boneMaxs = boneMins + localBonePos, boneMaxs + localBonePos
 
+            if not pelvisFix and localBonePos[ 3 ] < 0 then
+                pelvisFix = true
+            end
+
             for axis = 1, 3 do
                 if boneMins[ axis ] < mins[ axis ] then
                     mins[ axis ] = boneMins[ axis ]
@@ -73,6 +79,11 @@ local function calcByEntity( entity )
                 end
             end
         end
+    end
+
+    if pelvisFix then
+        maxs[ 3 ] = maxs[ 3 ] - mins[ 3 ]
+        mins[ 3 ] = 0
     end
 
     maxs[ 1 ] = math.floor( ( ( maxs[ 1 ] - mins[ 1 ] ) + ( maxs[ 2 ] - mins[ 2 ] ) ) / 4 )
@@ -124,18 +135,42 @@ local function fastCalcByModel( model )
 end
 
 local function getEyePosition( entity )
-    local bone = entity:FindBone( ".+Head.+" )
-    if bone then
-        local mins, maxs = entity:GetHitBoxBoundsByBone( bone )
-        if mins and maxs then
-            return entity:GetLocalBonePosition( bone ) + ( maxs - mins ) / 2
+    local bone = entity:FindBone( "Head" )
+    if not bone then
+        local highestBone
+        for i = 0, entity:GetBoneCount() do
+            local pos = entity:GetBonePosition( i )
+            if not pos then continue end
+            if not highestBone or highestBone[ 2 ] < pos[ 3 ]  then
+                highestBone = { i, pos[ 3 ] }
+            end
+        end
+
+        if highestBone then
+            bone = highestBone[ 1 ]
         end
     end
 
-    local eyes = entity:GetAttachmentByName( "eyes" )
-    if eyes then return eyes.Pos end
+    if bone then
+        local mins, maxs = entity:GetHitBoxBoundsByBone( bone )
+        if mins and maxs then
+            -- local pelvisPos = entity:GetLocalBonePosition( 0 )
+            -- if pelvisPos[ 3 ] < 0 then
 
-    return entity:EyePos()
+            -- end
+
+            return entity:GetLocalBonePosition( bone ) + ( maxs - mins ) / 2
+        end
+
+        return entity:GetLocalBonePosition( bone )
+    end
+
+    local eyes = entity:GetAttachmentByName( "eyes" )
+    if eyes then
+        return entity:WorldToLocal( eyes.Pos )
+    end
+
+    return vector_zero
 end
 
 local PLAYER = FindMetaTable( "Player" )
@@ -192,7 +227,7 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
 
             -- Height correction
             duckHeight = math.floor( math.max( 5, duckHeight, eyeHeightDuck + 5 ) )
-            maxs[3] = math.floor( math.max( maxs[ 3 ], eyeHeight + 5 ) )
+            maxs[ 3 ] = math.floor( math.max( maxs[ 3 ], eyeHeight + 5 ) )
 
             -- Saving results in cache
             modelCache[ model ] = { { mins, maxs }, duckHeight, { eyeHeightDuck, eyeHeight } }
