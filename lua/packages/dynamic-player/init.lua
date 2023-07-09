@@ -269,10 +269,5 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
     self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( mins[ 3 ] ) ) )
 end )
 
-hook.Add( "OnPlayerModelChange", "ModelChanged", function( ply )
-    util.NextTick( function()
-        if IsValid( ply ) then
-            ply:SetupModelBounds()
-        end
-    end )
-end )
+hook.Add( "PlayerInitialized", "PlayerInitialized", PLAYER.SetupModelBounds )
+hook.Add( "PlayerModelChanged", "ModelChanged", PLAYER.SetupModelBounds )
