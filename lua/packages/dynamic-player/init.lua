@@ -154,12 +154,14 @@ local function getEyePosition( entity )
     if bone then
         local mins, maxs = entity:GetHitBoxBoundsByBone( bone )
         if mins and maxs then
-            -- local pelvisPos = entity:GetLocalBonePosition( 0 )
-            -- if pelvisPos[ 3 ] < 0 then
+            local pos = entity:GetLocalBonePosition( bone )
 
-            -- end
+            local pelvisPos = entity:GetLocalBonePosition( 0 )
+            if pelvisPos and pelvisPos[ 3 ] < 0 then
+                return pos + ( maxs - mins * 2 )
+            end
 
-            return entity:GetLocalBonePosition( bone ) + ( maxs - mins ) / 2
+            return pos + ( maxs - mins ) / 2
         end
 
         return entity:GetLocalBonePosition( bone )

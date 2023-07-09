@@ -1,5 +1,5 @@
 name = "dynamic-player"
-version = 010100
+version = 010200
 autorun = true
 init = {
     ["server"] = "init.lua"
