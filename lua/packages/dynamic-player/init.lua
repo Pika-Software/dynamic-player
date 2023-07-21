@@ -8,94 +8,85 @@ local util = util
 
 -- Variables
 local table_insert = table.insert
-local WorldToLocal = WorldToLocal
 local string_lower = string.lower
 local ents_Create = ents.Create
-local vector_zero = vector_zero
+local logger = gpm.Logger
 local IsValid = IsValid
 local ipairs = ipairs
 local Vector = Vector
-local select = select
-
-do
-
-    local CurTime = CurTime
-    local ENT = {}
-
-    ENT.Type = "anim"
-    ENT.AutomaticFrameAdvance = true
-
-    function ENT:Initialize()
-        self:AddEFlags( EFL_SERVER_ONLY )
-        self:SetNoDraw( true )
-    end
-
-    function ENT:SetCrouching( bool )
-        self.Crouching = bool
-    end
-
-    function ENT:Think()
-        local seqID = self:LookupSequence( self.Crouching and "cidle_all" or "idle_all_01" )
-        if seqID > 0 then
-            self:SetSequence( seqID )
-        end
-
-        self:SetCycle( 1 )
-        self:NextThink( CurTime() )
-        return true
-    end
-
-    scripted_ents.Register( ENT, "dynamic-player-dummy" )
-
-end
 
 local function calcByEntity( entity )
-    local playerPos, playerAng = entity:GetPos(), entity:GetAngles()
-    local mins, maxs = Vector(), Vector()
-    local pelvisFix = false
+    local eyes, mins, maxs = Vector(), Vector(), Vector()
 
+    local bounds = {}
     for hboxset = 0, entity:GetHitboxSetCount() - 1 do
         for hitbox = 0, entity:GetHitBoxCount( hboxset ) - 1 do
-            local bone = entity:GetHitBoxBone( hitbox, hboxset )
-            if bone < 0 then continue end
+            bounds[ entity:GetHitBoxBone( hitbox, hboxset ) ] = { entity:GetHitBoxBounds( hitbox, hboxset ) }
+        end
+    end
 
-            local boneMins, boneMaxs = entity:GetHitBoxBounds( hitbox, hboxset )
-            local bonePos, boneAng = entity:GetLocalBonePosition( bone )
+    for bone = 0, entity:GetBoneCount() do
+        local bonePos = entity:GetLocalBonePosition( bone )
+        if not bonePos then continue end
 
-            local localBonePos = WorldToLocal( bonePos, boneAng, playerPos, playerAng )
-            boneMins, boneMaxs = boneMins + localBonePos, boneMaxs + localBonePos
+        local boneName = entity:GetBoneName( bone )
 
-            if not pelvisFix and localBonePos[ 3 ] < 0 then
-                pelvisFix = true
+        local data = bounds[ bone ]
+        if not data then
+            if boneName and string.find( boneName, "Head" ) and bonePos[ 3 ] > eyes[ 3 ] then
+                eyes[ 3 ] = bonePos[ 3 ]
             end
 
-            for axis = 1, 3 do
-                if boneMins[ axis ] < mins[ axis ] then
-                    mins[ axis ] = boneMins[ axis ]
-                end
+            continue
+        end
 
-                if boneMaxs[ axis ] > maxs[ axis ] then
-                    maxs[ axis ] = boneMaxs[ axis ]
-                end
+        local boneMins, boneMaxs = bonePos + data[ 1 ], bonePos + data[ 2 ]
+        if boneName and string.find( boneName, "Head" ) or string.find( boneName, "Eyes" ) then
+            local eyePos = ( boneMaxs + boneMins ) / 2
+            if eyePos[ 3 ] > eyes[ 3 ] then
+                eyes[ 3 ] = eyePos[ 3 ]
+            end
+        end
+
+        for axis = 1, 3 do
+            if bonePos[ axis ] < mins[ axis ] then
+                mins[ axis ] = bonePos[ axis ]
+            end
+
+            if bonePos[ axis ] > maxs[ axis ] then
+                maxs[ axis ] = bonePos[ axis ]
+            end
+
+            if boneMins[ axis ] < mins[ axis ] then
+                mins[ axis ] = boneMins[ axis ]
+            end
+
+            if boneMaxs[ axis ] > maxs[ axis ] then
+                maxs[ axis ] = boneMaxs[ axis ]
             end
         end
     end
 
-    if pelvisFix then
-        maxs[ 3 ] = maxs[ 3 ] - mins[ 3 ]
-        mins[ 3 ] = 0
-    end
-
-    maxs[ 1 ] = math.floor( ( ( maxs[ 1 ] - mins[ 1 ] ) + ( maxs[ 2 ] - mins[ 2 ] ) ) / 4 )
-    maxs[ 3 ] = math.floor( maxs[ 3 ] )
+    maxs[ 1 ] = math.Round( ( ( maxs[ 1 ] - mins[ 1 ] ) + ( maxs[ 2 ] - mins[ 2 ] ) ) / 4 )
     maxs[ 2 ] = maxs[ 1 ]
 
-    local floorMins = math.floor( mins[ 3 ] )
-    mins[ 3 ] = math.abs( floorMins ) >= maxs[ 3 ] and floorMins or 0
     mins[ 1 ] = -maxs[ 1 ]
     mins[ 2 ] = mins[ 1 ]
 
-    return mins, maxs
+    maxs[ 3 ] = math.Round( maxs[ 3 ] + math.abs( mins[ 3 ] ) )
+    mins[ 3 ] = 0
+
+    if eyes[ 3 ] < 1 then
+        eyes[ 3 ] = ( maxs[ 3 ] - mins[ 3 ] ) * 0.9
+    end
+
+    eyes[ 3 ] = math.Round( eyes[ 3 ] )
+
+    return {
+        ["Eyes"] = eyes,
+        ["Mins"] = mins,
+        ["Maxs"] = maxs
+    }
 end
 
 local function fastCalcByModel( model )
@@ -134,141 +125,141 @@ local function fastCalcByModel( model )
     return mins, maxs
 end
 
-local function getEyePosition( entity )
-    local bone = entity:FindBone( "Head" )
-    if not bone then
-        local highestBone
-        for i = 0, entity:GetBoneCount() do
-            local pos = entity:GetBonePosition( i )
-            if not pos then continue end
-            if not highestBone or highestBone[ 2 ] < pos[ 3 ]  then
-                highestBone = { i, pos[ 3 ] }
-            end
-        end
+local encoder = install( "packages/glua-encoder", "https://github.com/Pika-Software/glua-encoder" )
+local cache = {}
 
-        if highestBone then
-            bone = highestBone[ 1 ]
+util.NextTick( function()
+    local content = file.Read( "dynamic-player-cache.dat", "DATA" )
+    if content then
+        local data = encoder.Decode( content, true )
+        if data then
+            table.Merge( cache, data )
+            logger:Info( "Cache from 'dynamic-player-cache.dat' was loaded successfully." )
         end
     end
+end )
 
-    if bone then
-        local mins, maxs = entity:GetHitBoxBoundsByBone( bone )
-        if mins and maxs then
-            local pos = entity:GetLocalBonePosition( bone )
+hook.Add( "ShutDown", "Cache Saving", function()
+    file.Write( "dynamic-player-cache.dat", encoder.Encode( cache, true ) )
+    logger:Info( "Cache was successfully compressed and saved.", fileName )
+end )
 
-            local pelvisPos = entity:GetLocalBonePosition( 0 )
-            if pelvisPos and pelvisPos[ 3 ] < 0 then
-                return pos + ( maxs - mins * 2 )
-            end
-
-            return pos + ( maxs - mins ) / 2
-        end
-
-        return entity:GetLocalBonePosition( bone )
-    end
-
-    local eyes = entity:GetAttachmentByName( "eyes" )
-    if eyes then
-        return entity:WorldToLocal( eyes.Pos )
-    end
-
-    return vector_zero
-end
-
+local sourceVents = CreateConVar( "dp_source_vents_support", "0", FCVAR_ARCHIVE, "Enables source vents support by limiting max player crouch height.", 0, 1 )
 local PLAYER = FindMetaTable( "Player" )
-local modelCache = {}
 
 PLAYER.SetupModelBounds = promise.Async( function( self )
     local model = string_lower( self:GetModel() )
     if hook.Run( "OnPlayerUpdateModelBounds", self, model ) then return end
 
-    local mins, maxs, duckHeight, eyeHeightDuck, eyeHeight
-    local cache = modelCache[ model ]
-    if cache then
-        mins, maxs, duckHeight, eyeHeightDuck, eyeHeight = cache[ 1 ][ 1 ], cache[ 1 ][ 2 ], cache[ 2 ], cache[ 3 ][ 1 ], cache[ 3 ][ 2 ]
-    end
+    local modelData = cache[ model ]
+    if not modelData then
+        modelData = {}
 
-    if self:GetBoneCount() > 1 then
-        if not cache then
-            local dummy = ents_Create( "dynamic-player-dummy" )
+        if self:GetBoneCount() > 1 then
+            local dummy = ents_Create( "dp_dummy" )
             dummy:SetModel( Model( model ) )
             dummy:Spawn()
 
             promise.Sleep( 0.25 )
+
             if not IsValid( dummy ) then return end
+            local standing = calcByEntity( dummy )
 
-            -- Hull calc
-            mins, maxs = calcByEntity( dummy )
-
-            -- Eyes height calc
-            eyeHeight = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[ 3 ] )
-
-            -- Ducking dummy
-            dummy:SetCrouching( true )
-
+            dummy.Crouching = true
             promise.Sleep( 0.25 )
+
             if not IsValid( dummy ) then return end
+            local crouching = calcByEntity( dummy )
 
-            -- Duck height calc
-            duckHeight = select( -1, calcByEntity( dummy ) )[ 3 ]
-
-            -- Shitty models fix
-            if duckHeight < 5 then
-                duckHeight = maxs[ 3 ] / 2
+            if IsValid( dummy ) then
+                dummy:Remove()
             end
 
-            -- Duck eyes height calc
-            eyeHeightDuck = math.Round( dummy:WorldToLocal( getEyePosition( dummy ) )[ 3 ] )
+            local smaxs, cmaxs = standing.Maxs, crouching.Maxs
+            if smaxs[ 1 ] < cmaxs[ 1 ] then
+                cmaxs[ 1 ] = smaxs[ 1 ]
+                cmaxs[ 2 ] = smaxs[ 2 ]
+            else
+                smaxs[ 1 ] = cmaxs[ 1 ]
+                smaxs[ 2 ] = cmaxs[ 2 ]
+            end
 
-            -- Dummy remove
-            dummy:Remove()
+            local smins, cmins = standing.Mins, crouching.Mins
+            if smins[ 1 ] > cmins[ 1 ] then
+                cmins[ 1 ] = smins[ 1 ]
+                cmins[ 2 ] = smins[ 2 ]
+            else
+                smins[ 1 ] = cmins[ 1 ]
+                smins[ 2 ] = cmins[ 2 ]
+            end
 
-            -- Eye position correction
-            eyeHeight = math.floor( math.max( eyeHeight - 5, 5 ) )
-            eyeHeightDuck = math.floor( math.max( 5, eyeHeightDuck, ( maxs[ 3 ] - mins[ 3 ] ) * 0.6 ) )
+            local zOffset = ( standing.Mins[ 3 ] + crouching.Mins[ 3 ] ) / 2
+            standing.Mins[ 3 ] = zOffset
+            crouching.Mins[ 3 ] = zOffset
 
-            -- Height correction
-            duckHeight = math.floor( math.max( 5, duckHeight, eyeHeightDuck + 5 ) )
-            maxs[ 3 ] = math.floor( math.max( maxs[ 3 ], eyeHeight + 5 ) )
+            for axis = 1, 2 do
+                local offset = ( standing.Eyes[ axis ] + crouching.Eyes[ axis ] ) / 2
+                standing.Eyes[ axis ] = offset
+                crouching.Eyes[ axis ] = offset
+            end
 
-            -- Saving results in cache
-            modelCache[ model ] = { { mins, maxs }, duckHeight, { eyeHeightDuck, eyeHeight } }
+            modelData.Standing = standing
+            modelData.Crouching = crouching
+        else
+            local mins, maxs = fastCalcByModel( model )
+            local eyeHeight = math.Round( ( maxs[ 3 ] - mins[ 3 ] ) * 0.9 )
+            modelData.Standing = {
+                ["Eyes"] = Vector( 0, 0, eyeHeight ),
+                ["Mins"] = mins:Copy(),
+                ["Maxs"] = maxs:Copy()
+            }
+
+            maxs[ 3 ] = maxs[ 3 ] * 0.7
+
+            modelData.Crouching = {
+                ["Eyes"] = Vector( 0, 0, math.Round( eyeHeight * 0.7 ) ),
+                ["Mins"] = mins,
+                ["Maxs"] = maxs
+            }
         end
 
-        -- Selecting eyes level
-        self:SetViewOffset( Vector( 0, 0, eyeHeight ) )
-        self:SetViewOffsetDucked( Vector( 0, 0, math.min( eyeHeight * 0.6, eyeHeightDuck ) ) )
-    else
-        if not cache then
-            -- Hulls calc
-            mins, maxs = fastCalcByModel( model )
-            duckHeight = maxs[ 3 ] * 0.7
+        -- Height correction
+        local standing, crouching = modelData.Standing, modelData.Crouching
+        standing.Maxs[ 3 ] = math.max( 10, standing.Maxs[ 3 ], standing.Eyes[ 3 ] + 5 )
+        crouching.Maxs[ 3 ] = math.max( 5, crouching.Maxs[ 3 ], crouching.Eyes[ 3 ] + 5 )
 
-            -- Eyes calc
-            eyeHeight = math.Round( ( maxs[ 3 ] - mins[ 3 ] ) * 0.9 )
-            eyeHeightDuck = math.Round( eyeHeight * 0.7 )
+        -- Eyes correction
+        local sEyes, cEyes = standing.Eyes[ 3 ], crouching.Eyes[ 3 ]
+        standing.Eyes[ 3 ] = math.max( 15, sEyes, cEyes )
+        crouching.Eyes[ 3 ] = math.max( 10, math.min( sEyes, cEyes ) )
 
-            -- Saving results in cache
-            modelCache[ model ] = { { mins, maxs }, duckHeight, { eyeHeight, eyeHeightDuck } }
-        end
+        modelData.StepSize = math.min( math.floor( ( standing.Maxs[ 3 ] - standing.Mins[ 3 ] ) / 3.6 ), 4095 )
+        cache[ model ] = modelData
+    end
 
-        -- Selecting eyes level
-        self:SetViewOffsetDucked( Vector( 0, 0, eyeHeightDuck ) )
-        self:SetViewOffset( Vector( 0, 0, eyeHeight ) )
+    local standing, crouching = modelData.Standing, modelData.Crouching
+
+    -- Selecting eyes level
+    self:SetViewOffsetDucked( crouching.Eyes )
+    self:SetViewOffset( standing.Eyes )
+
+    -- Shitty hack for source vents support
+    if sourceVents:GetBool() then
+        crouching.Maxs[ 3 ] = math.min( 48, crouching.Maxs[ 3 ] )
     end
 
     -- Setuping hulls
-    self:SetHullDuck( mins, Vector( maxs[ 1 ], maxs[ 2 ], duckHeight ) )
-    self:SetHull( mins, maxs )
+    self:SetHullDuck( crouching.Mins, crouching.Maxs )
+    self:SetHull( standing.Mins, standing.Maxs )
 
     -- Setuping step size
-    self:SetStepSize( math.min( math.floor( ( maxs[ 3 ] - mins[ 3 ] ) / 3.6 ), 4095 ) )
+    self:SetStepSize( modelData.StepSize )
 
-    hook.Run( "PlayerUpdatedModelBounds", self, model )
+    hook.Run( "PlayerUpdatedModelBounds", self, model, modelData )
 
     -- Position fix
-    if mins[ 3 ] >= 0 or self:InVehicle() then return end
-    self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( mins[ 3 ] ) ) )
+    if standing.Mins[ 3 ] >= 0 or self:InVehicle() then return end
+    self:SetPos( self:GetPos() + Vector( 0, 0, math.abs( standing.Mins[ 3 ] ) ) )
 end )
 
 hook.Add( "PlayerInitialized", "PlayerInitialized", PLAYER.SetupModelBounds )
