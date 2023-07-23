@@ -1,5 +1,6 @@
 install( "packages/player-extensions", "https://github.com/Pika-Software/player-extensions" )
 install( "packages/glua-extensions", "https://github.com/Pika-Software/glua-extensions" )
+install( "packages/config", "https://github.com/Pika-Software/config")
 
 -- Libraries
 local promise = promise
@@ -10,7 +11,6 @@ local util = util
 local table_insert = table.insert
 local string_lower = string.lower
 local ents_Create = ents.Create
-local logger = gpm.Logger
 local IsValid = IsValid
 local ipairs = ipairs
 local Vector = Vector
@@ -125,33 +125,15 @@ local function fastCalcByModel( model )
     return mins, maxs
 end
 
-local encoder = install( "packages/glua-encoder", "https://github.com/Pika-Software/glua-encoder" )
-local cache = {}
-
-util.NextTick( function()
-    local content = file.Read( "dynamic-player-cache.dat", "DATA" )
-    if content then
-        local data = encoder.Decode( content, true )
-        if data then
-            table.Merge( cache, data )
-            logger:Info( "Cache from 'dynamic-player-cache.dat' was loaded successfully." )
-        end
-    end
-end )
-
-hook.Add( "ShutDown", "Cache Saving", function()
-    file.Write( "dynamic-player-cache.dat", encoder.Encode( cache, true ) )
-    logger:Info( "Cache was successfully compressed and saved.", fileName )
-end )
-
 local sourceVents = CreateConVar( "dp_source_vents_support", "0", FCVAR_ARCHIVE, "Enables source vents support by limiting max player crouch height.", 0, 1 )
+local playerModels = config.Create( "dynamic-player" )
 local PLAYER = FindMetaTable( "Player" )
 
 PLAYER.SetupModelBounds = promise.Async( function( self )
     local model = string_lower( self:GetModel() )
     if hook.Run( "OnPlayerUpdateModelBounds", self, model ) then return end
 
-    local modelData = cache[ model ]
+    local modelData = playerModels:Get( model )
     if not modelData then
         modelData = {}
 
@@ -234,7 +216,7 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
         crouching.Eyes[ 3 ] = math.max( 10, math.min( sEyes, cEyes ) )
 
         modelData.StepSize = math.min( math.floor( ( standing.Maxs[ 3 ] - standing.Mins[ 3 ] ) / 3.6 ), 4095 )
-        cache[ model ] = modelData
+        playerModels:Set( model, modelData )
     end
 
     local standing, crouching = modelData.Standing, modelData.Crouching
