@@ -1,6 +1,6 @@
 install( "packages/player-extensions", "https://github.com/Pika-Software/player-extensions" )
 install( "packages/glua-extensions", "https://github.com/Pika-Software/glua-extensions" )
-install( "packages/config", "https://github.com/Pika-Software/config")
+install( "packages/config.lua", "https://raw.githubusercontent.com/Pika-Software/config/main/lua/packages/config.lua")
 
 -- Libraries
 local promise = promise
