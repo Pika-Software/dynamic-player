@@ -30,7 +30,6 @@ local function calcByEntity( entity )
         if not bonePos then continue end
 
         local boneName = entity:GetBoneName( bone )
-
         local data = bounds[ bone ]
         if not data then
             if boneName and string.find( boneName, "Head" ) and bonePos[ 3 ] > eyes[ 3 ] then
@@ -230,11 +229,8 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
         crouching.Maxs[ 3 ] = math.min( 48, crouching.Maxs[ 3 ] )
     end
 
-    -- Setuping hulls
     self:SetHullDuck( crouching.Mins, crouching.Maxs )
     self:SetHull( standing.Mins, standing.Maxs )
-
-    -- Setuping step size
     self:SetStepSize( modelData.StepSize )
 
     hook.Run( "PlayerUpdatedModelBounds", self, model, modelData )
