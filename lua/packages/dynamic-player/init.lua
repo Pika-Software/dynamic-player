@@ -125,14 +125,14 @@ local function fastCalcByModel( model )
 end
 
 local sourceVents = CreateConVar( "dp_source_vents_support", "0", FCVAR_ARCHIVE, "Enables source vents support by limiting max player crouch height.", 0, 1 )
-local playerModels = config.Create( "dynamic-player" )
+local configFile = config.Create( "dynamic-player" )
 local PLAYER = FindMetaTable( "Player" )
 
 PLAYER.SetupModelBounds = promise.Async( function( self )
     local model = string_lower( self:GetModel() )
     if hook.Run( "OnPlayerUpdateModelBounds", self, model ) then return end
 
-    local modelData = playerModels:Get( model )
+    local modelData = configFile:Get( model )
     if not modelData then
         modelData = {}
 
@@ -214,8 +214,12 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
         standing.Eyes[ 3 ] = math.max( 15, sEyes, cEyes )
         crouching.Eyes[ 3 ] = math.max( 10, math.min( sEyes, cEyes ) )
 
+        -- Fucked models fix
+        local min, max = math.min( standing.Maxs[ 3 ], crouching.Maxs[ 3 ] ), math.max( standing.Maxs[ 3 ], crouching.Maxs[ 3 ] )
+        crouching.Maxs[ 3 ], standing.Maxs[ 3 ] = min, max
+
         modelData.StepSize = math.min( math.floor( ( standing.Maxs[ 3 ] - standing.Mins[ 3 ] ) / 3.6 ), 4095 )
-        playerModels:Set( model, modelData )
+        configFile:Set( model, modelData )
     end
 
     local standing, crouching = modelData.Standing, modelData.Crouching
