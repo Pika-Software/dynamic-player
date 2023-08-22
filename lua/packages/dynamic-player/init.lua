@@ -237,7 +237,7 @@ PLAYER.SetupModelBounds = promise.Async( function( self )
     self:SetHull( standing.Mins, standing.Maxs )
     self:SetStepSize( modelData.StepSize )
 
-    hook.Run( "PlayerUpdatedModelBounds", self, model, modelData )
+    hook.Run( "PlayerModelBoundsChanged", self, model, modelData )
 
     -- Position fix
     if standing.Mins[ 3 ] >= 0 or self:InVehicle() then return end
